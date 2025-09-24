@@ -1,176 +1,383 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Reservoir QuickCalc – Monte Carlo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin:20px; }
-    .var { border:1px solid #ccc; padding:10px; margin-bottom:10px; border-radius:8px; }
-    label { display:block; margin-top:6px; }
-    input, select, button { padding:6px; margin-top:4px; }
-    .results { margin-top:20px; }
+    :root{
+      --bg:#0b1220; --panel:#111a2b; --card:#0f1627; --muted:#9aa4b2; --text:#e7eef7; --brand:#46b3ff; --accent:#20c997; --warn:#fbbf24; --border:#1b2842;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#061021,#0b1220 40%,#0b1220); color:var(--text); font:14px/1.4 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+    .wrap{display:grid; grid-template-columns:340px 1fr; min-height:100vh}
+    aside{background:var(--panel); border-right:1px solid var(--border); padding:18px}
+    main{padding:18px}
+    h1{font-size:18px; margin:0 0 12px; color:#fff}
+    .subtle{color:var(--muted)}
+    .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 6px 18px rgba(0,0,0,.25)}
+    .row{display:grid; grid-template-columns:130px 1fr; gap:10px; align-items:center; margin-bottom:10px}
+    label{color:var(--muted)}
+    input,select,button{width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#0b1324; color:var(--text)}
+    input[type=checkbox]{width:auto}
+    .btn{background:var(--brand); border:none; color:#001726; font-weight:600; cursor:pointer}
+    .btn.secondary{background:#0b1324; color:var(--brand); border:1px solid var(--brand)}
+    .btn.ghost{background:transparent; border:1px dashed var(--border); color:var(--muted)}
+    .btn-row{display:flex; gap:10px; margin-top:8px; flex-wrap:wrap}
+    table{width:100%; border-collapse:separate; border-spacing:0 6px}
+    th,td{padding:8px 10px; text-align:left}
+    thead th{color:var(--muted); font-weight:600}
+    tbody tr{background:#0b1324; border:1px solid var(--border)}
+    tbody td:first-child, thead th:first-child { border-top-left-radius:10px; border-bottom-left-radius:10px }
+    tbody td:last-child, thead th:last-child { border-top-right-radius:10px; border-bottom-right-radius:10px }
+    .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+    .metrics{display:grid; grid-template-columns:repeat(5,1fr); gap:10px}
+    .metric{background:#0b1324; border:1px solid var(--border); border-radius:12px; padding:10px}
+    .metric .lbl{color:var(--muted); font-size:12px}
+    .metric .val{font-size:16px; font-weight:700}
+    .hint{color:var(--muted); font-size:12px; margin-top:6px}
+    .pill{display:inline-block; padding:4px 8px; border-radius:999px; background:#0b1324; border:1px solid var(--border); color:var(--muted); font-size:12px}
+    .danger{color:#ff6b6b}
+    @media (max-width: 1000px){ .wrap{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
-  <h1>Reservoir QuickCalc – Monte Carlo</h1>
+  <div class="wrap">
+    <!-- ================= LEFT PANE ================= -->
+    <aside>
+      <h1>Reservoir QuickCalc <span class="pill">Monte Carlo</span></h1>
 
-  <div>
-    <label>Iterations <input id="iters" type="number" value="50000"></label>
-    <label>Equation Preset
-      <select id="preset">
-        <option value="">Custom (use expression box)</option>
-        <option value="Arps Cumulative">Arps Cumulative</option>
-      </select>
-    </label>
-    <label>Custom Expression <input id="expr" size="70" value="X1+X2"></label>
+      <div class="card">
+        <div class="row"><label>Iterations</label><input id="iters" type="number" value="50000" min="100" step="1000"></div>
+        <div class="row"><label>Seed</label><input id="seed" type="number" value="42"></div>
+        <div class="row"><label>Latin Hypercube</label><input id="lhs" type="checkbox" checked></div>
+      </div>
+
+      <div class="card">
+        <div class="row"><label>Equation Preset</label>
+          <select id="preset">
+            <option value="">Custom (type below)</option>
+            <option value="Arps Cumulative">Arps Cumulative (qe limit)</option>
+            <!-- add more presets here later -->
+          </select>
+        </div>
+        <div class="row"><label>Expression</label>
+          <input id="expr" placeholder="Type or choose a preset…" value="X1 + X2">
+        </div>
+        <div class="hint">
+          Supported: <code>+, -, *, /, ^</code>, <code>abs()</code>, <code>ln()</code>, <code>exp()</code>, <code>min()</code>, <code>max()</code>, <code>where(cond,a,b)</code>.<br>
+          Example: <code>Qi/((1-b)*Di) * (1 - (qe/Qi)^((1-b)/b))</code>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="runBtn">Run Simulation</button>
+          <button class="btn secondary" id="clearBtn">Clear</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row"><label>Add Variable</label><button class="btn ghost" id="addVarBtn">+ Add row</button></div>
+        <div class="hint">Click the ⋮ menu per-row to duplicate or delete.</div>
+      </div>
+    </aside>
+
+    <!-- ================= RIGHT PANE ================= -->
+    <main>
+      <div class="card">
+        <h2 style="margin:0 0 10px;">Variables</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28%">Name</th>
+              <th style="width:26%">Distribution</th>
+              <th style="width:20%">Min</th>
+              <th style="width:20%">Max</th>
+              <th style="width:6%"></th>
+            </tr>
+          </thead>
+          <tbody id="varBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 10px;">Results</h2>
+        <div class="metrics">
+          <div class="metric"><div class="lbl">Mean</div><div class="val" id="mMean">–</div></div>
+          <div class="metric"><div class="lbl">Std Dev</div><div class="val" id="mStd">–</div></div>
+          <div class="metric"><div class="lbl">P10</div><div class="val" id="mP10">–</div></div>
+          <div class="metric"><div class="lbl">P50</div><div class="val" id="mP50">–</div></div>
+          <div class="metric"><div class="lbl">P90</div><div class="val" id="mP90">–</div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn secondary" id="dlData">Download Data (CSV)</button>
+          <button class="btn secondary" id="dlSummary">Download Summary (CSV)</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3 style="margin:0 0 8px;">Output Distribution</h3>
+          <div id="hist" style="height:320px;"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 8px;">Empirical CDF</h3>
+          <div id="cdf" style="height:320px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Sensitivity (Tornado)</h3>
+        <div id="tornado" style="height:360px;"></div>
+      </div>
+    </main>
   </div>
 
-  <h2>Variables</h2>
-  <div id="vars"></div>
-  <button onclick="addVar()">Add Variable</button><br><br>
-  <button onclick="runSim()">Run Simulation</button>
-
-  <div class="results">
-    <h2>Results</h2>
-    <div id="summary"></div>
-    <div id="hist"></div>
-    <div id="cdf"></div>
-    <div id="tornado"></div>
-  </div>
-
-<script>
-/* ========= Presets ========= */
-const PRESETS = {
-  "Arps Cumulative": (ctx) => {
-    const {Qi, Di, b, qe} = ctx;
-    if (qe >= Qi) return 0;
-    if (Math.abs(b) < 1e-8) {
-      return (Qi - qe) / Di; // Exponential
-    } else if (Math.abs(b - 1) < 1e-8) {
-      return (Qi / Di) * Math.log(Qi / qe); // Harmonic
-    } else {
-      return Qi / ((1 - b) * Di) * (1 - Math.pow(qe / Qi, (1 - b) / b)); // Hyperbolic
-    }
-  }
-};
-
-const PRESET_EXPRESSIONS = {
-  "Arps Cumulative": "case(b=0)→(Qi - qe)/Di ; case(b=1)→(Qi/Di)*ln(Qi/qe) ; else→Qi/((1-b)*Di)*(1-(qe/Qi)^((1-b)/b))"
-};
-
-/* ========= Variable UI ========= */
-let varCount=0;
-function addVar(name="X"+(varCount+1)){
-  varCount++;
-  const div=document.createElement("div");
-  div.className="var";
-  div.innerHTML=`
-    <label>Name <input class="name" value="${name}"></label>
-    <label>Distribution 
-      <select class="dist">
-        <option>uniform</option>
-        <option>triangular</option>
-        <option>normal</option>
-        <option>lognormal</option>
-        <option>PERT</option>
-        <option>fixed</option>
-      </select>
-    </label>
-    <label>Min <input type="number" step="0.00001" class="min" value="0"></label>
-    <label>Max <input type="number" step="0.00001" class="max" value="1"></label>
-  `;
-  document.getElementById("vars").appendChild(div);
-}
-// defaults for Arps
-addVar("Qi");
-addVar("Di");
-addVar("b");
-addVar("qe");
-
-/* ========= Distribution Samplers ========= */
-function randn(){ let u=Math.random(), v=Math.random();
-  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
-function sample(dist,xmin,xmax){
-  if(dist=="fixed") return (xmin+xmax)/2;
-  if(dist=="uniform") return xmin+(xmax-xmin)*Math.random();
-  if(dist=="triangular"){
-    let u=Math.random(), c=(xmin+xmax)/2, Fc=(c-xmin)/(xmax-xmin);
-    return u<Fc ? xmin+Math.sqrt(u*(xmax-xmin)*(c-xmin))
-                : xmax-Math.sqrt((1-u)*(xmax-xmin)*(xmax-c));
-  }
-  if(dist=="normal"){ let mean=(xmin+xmax)/2, std=(xmax-xmin)/3.3; return mean+std*randn(); }
-  if(dist=="lognormal"){ let mu=Math.log((xmin+xmax)/2), sigma=(Math.log(xmax)-Math.log(xmin))/3.3;
-    return Math.exp(mu+sigma*randn()); }
-  if(dist=="PERT"){ let a=xmin,b=xmax; return a+(b-a)*Math.random(); }
-}
-
-/* ========= Simulation ========= */
-function runSim(){
-  const iters=parseInt(document.getElementById("iters").value);
-  const expr=document.getElementById("expr").value;
-  const preset=document.getElementById("preset").value;
-
-  const cards=document.querySelectorAll(".var");
-  let names=[], specs=[];
-  cards.forEach(c=>{
-    names.push(c.querySelector(".name").value);
-    specs.push({
-      dist:c.querySelector(".dist").value,
-      min:parseFloat(c.querySelector(".min").value),
-      max:parseFloat(c.querySelector(".max").value)
+  <script>
+    /* ================= PRESETS ================ */
+    const PRESET_EXPRESSIONS = {
+      // General Arps cumulative to economic limit qe (handles b≈0, b≈1 cases too)
+      "Arps Cumulative": "where(qe >= Qi, 0, where(abs(b) < 1e-8, (Qi - qe)/Di, where(abs(b - 1) < 1e-8, (Qi/Di)*ln(Qi/qe), Qi/((1 - b)*Di) * (1 - (qe/Qi)^((1 - b)/b)))))"
+    };
+    document.getElementById('preset').addEventListener('change', e=>{
+      const v = e.target.value;
+      if (v && PRESET_EXPRESSIONS[v]) {
+        document.getElementById('expr').value = PRESET_EXPRESSIONS[v];
+      }
     });
-  });
 
-  let data=[], samples={}; names.forEach(n=>samples[n]=[]);
-  for(let i=0;i<iters;i++){
-    let ctx={};
-    names.forEach((n,j)=>{
-      let v=sample(specs[j].dist,specs[j].min,specs[j].max);
-      ctx[n]=v; samples[n].push(v);
-    });
-    let val;
-    if(preset && PRESETS[preset]){
-      val=PRESETS[preset](ctx);
-    } else {
-      try{ val=eval(expr.replace(/\b([A-Za-z]\w*)\b/g,(m)=>ctx[m]??m)); }
-      catch(e){ console.error("Eval error",e); val=NaN; }
+    /* ============== VARIABLES TABLE ============== */
+    const VAR_DISTS = ["fixed","uniform","triangular","normal","lognormal","PERT"];
+    const varBody = document.getElementById('varBody');
+
+    function newRow({name="X", dist="uniform", min=0, max=1}={}){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input class="v-name" value="${name}" /></td>
+        <td>
+          <select class="v-dist">
+            ${VAR_DISTS.map(d=>`<option ${d===dist?'selected':''}>${d}</option>`).join('')}
+          </select>
+        </td>
+        <td><input class="v-min" type="number" step="0.00001" value="${min}"/></td>
+        <td><input class="v-max" type="number" step="0.00001" value="${max}"/></td>
+        <td style="text-align:right">
+          <button class="btn ghost v-dup" title="Duplicate">⎘</button>
+          <button class="btn ghost v-del danger" title="Delete">✖</button>
+        </td>`;
+      tr.querySelector('.v-dup').onclick = ()=> varBody.insertBefore(newRow(readRow(tr)), tr.nextSibling);
+      tr.querySelector('.v-del').onclick = ()=> tr.remove();
+      return tr;
     }
-    data.push(val);
-  }
+    function readRow(tr){
+      return {
+        name: tr.querySelector('.v-name').value.trim(),
+        dist: tr.querySelector('.v-dist').value,
+        min: parseFloat(tr.querySelector('.v-min').value),
+        max: parseFloat(tr.querySelector('.v-max').value)
+      };
+    }
+    function addVarRow(def){ varBody.appendChild(newRow(def)); }
+    document.getElementById('addVarBtn').onclick = ()=> addVarRow({name:`X${varBody.children.length+1}`});
 
-  data=data.filter(x=>!isNaN(x)).sort((a,b)=>a-b);
-  const mean=data.reduce((a,b)=>a+b,0)/data.length;
-  const p10=data[Math.floor(0.1*data.length)], 
-        p50=data[Math.floor(0.5*data.length)], 
-        p90=data[Math.floor(0.9*data.length)];
+    // Default rows for Arps cumulative
+    addVarRow({name:"Qi", dist:"lognormal", min:100, max:2000});
+    addVarRow({name:"Di", dist:"normal", min:0.05, max:0.35});
+    addVarRow({name:"b",  dist:"uniform", min:0.1, max:1.2});
+    addVarRow({name:"qe", dist:"fixed", min:10, max:10});
 
-  document.getElementById("summary").innerHTML=
-    `Mean=${mean.toFixed(2)} P10=${p10.toFixed(2)} P50=${p50.toFixed(2)} P90=${p90.toFixed(2)}`;
+    /* ============== SAMPLING HELPERS ============== */
+    // Simple seeded RNG (Mulberry32)
+    function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^t>>>15,1|t); r^=r+Math.imul(r^r>>>7,61|r); return ((r^r>>>14)>>>0)/4294967296; }; }
+    function randn(rng){ // Box–Muller
+      const u = Math.max(rng(), 1e-12), v = rng();
+      return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+    }
+    function lhs01(n,k,rng){
+      // Light-weight Latin Hypercube U(0,1) matrix
+      const out = Array.from({length:n}, ()=>Array(k).fill(0));
+      for(let j=0;j<k;j++){
+        const cuts = Array.from({length:n+1}, (_,i)=>i/n);
+        const rd = Array.from({length:n}, (_,i)=> rng()*(cuts[i+1]-cuts[i]) + cuts[i]);
+        const idx = Array.from({length:n}, (_,i)=>i);
+        // shuffle
+        for(let i=n-1;i>0;i--){ const m=Math.floor(rng()*(i+1)); [idx[i],idx[m]]=[idx[m],idx[i]]; }
+        for(let i=0;i<n;i++) out[i][j]=rd[idx[i]];
+      }
+      return out;
+    }
+    function sampleDist(dist,xmin,xmax,rng){
+      if(xmin>xmax){ const t=xmin; xmin=xmax; xmax=t; }
+      if(dist==="fixed") return (xmin+xmax)/2;
+      if(dist==="uniform") return xmin + (xmax-xmin)*rng();
+      if(dist==="triangular"){
+        const u=rng(), c=(xmin+xmax)/2, Fc=(c-xmin)/Math.max(xmax-xmin,1e-12);
+        return (u<Fc)? xmin+Math.sqrt(u*(xmax-xmin)*Math.max(c-xmin,0))
+                      : xmax-Math.sqrt((1-u)*(xmax-xmin)*Math.max(xmax-c,0));
+      }
+      if(dist==="normal"){
+        const mean=(xmin+xmax)/2, std=(xmax-xmin)/3.3; // ~90% within bounds
+        return mean + std*randn(rng);
+      }
+      if(dist==="lognormal"){
+        const mu=Math.log(Math.max((xmin+xmax)/2,1e-12));
+        const sigma=(Math.log(Math.max(xmax,1e-12))-Math.log(Math.max(xmin,1e-12)))/3.3;
+        return Math.exp(mu + sigma*randn(rng));
+      }
+      if(dist==="PERT"){ // symmetric simplified
+        return xmin + (xmax-xmin)*rng();
+      }
+    }
 
-  Plotly.newPlot("hist",[ {x:data,type:"histogram"} ]);
-  Plotly.newPlot("cdf",[ {x:data,y:data.map((d,i)=>i/data.length),mode:"lines"} ]);
+    /* ============== SAFE EVAL (math helpers) ============== */
+    function evalExpr(expr, ctx){
+      // replace caret ^ with power
+      let e = expr.replace(/\^/g,'**');
+      // provide math helpers
+      const scope = {
+        abs: Math.abs,
+        ln: Math.log,
+        exp: Math.exp,
+        min: Math.min,
+        max: Math.max,
+        where: (cond,a,b)=>cond? a:b
+      };
+      // inject variables
+      const keys = Object.keys(ctx);
+      const args = keys.concat(Object.keys(scope));
+      const vals = keys.map(k=>ctx[k]).concat(Object.values(scope));
+      // super basic guard
+      if(/[;={}\[\]`]|class|function|=>|while|for|switch|new|import|export/i.test(e)){
+        throw new Error("Invalid expression.");
+      }
+      // create function
+      const fn = new Function(...args, `return (${e});`);
+      return fn(...vals);
+    }
 
-  let cors=names.map(n=>{
-    let xi=samples[n], xm=xi.reduce((a,b)=>a+b,0)/iters;
-    let num=0, denx=0, deny=0;
-    data.forEach((y,i)=>{ num+=(xi[i]-xm)*(y-mean); denx+=(xi[i]-xm)**2; deny+=(y-mean)**2; });
-    let r=num/Math.sqrt(denx*deny);
-    return {name:n, r:r};
-  }).sort((a,b)=>Math.abs(a.r)-Math.abs(b.r));
-  Plotly.newPlot("tornado",[ {x:cors.map(c=>c.r),y:cors.map(c=>c.name),type:"bar",orientation:"h"} ]);
-}
+    /* ============== RUN SIMULATION ============== */
+    let lastData = null;
+    function run(){
+      const iters = Math.max(1, parseInt(document.getElementById('iters').value||"0",10));
+      const seed  = parseInt(document.getElementById('seed').value||"42",10);
+      const useLHS = document.getElementById('lhs').checked;
+      const expr = document.getElementById('expr').value.trim();
 
-/* ========= Preset → Expression Sync ========= */
-document.getElementById("preset").addEventListener("change", (e)=>{
-  const val=e.target.value;
-  if(val && PRESET_EXPRESSIONS[val]){
-    document.getElementById("expr").value=PRESET_EXPRESSIONS[val];
-  }
-});
+      // read variables
+      const rows = Array.from(varBody.children).map(readRow);
+      const names = rows.map(r=>r.name);
+      if(new Set(names).size!==names.length){ alert("Variable names must be unique."); return; }
 
+      // generate U(0,1)
+      const rng = mulberry32(seed);
+      let U = null;
+      if(useLHS) U = lhs01(iters, rows.length, rng);
+      // simulate
+      const samples = Object.fromEntries(names.map(nm=>[nm, new Float64Array(iters)]));
+      for(let j=0;j<rows.length;j++){
+        const r = rows[j];
+        for(let i=0;i<iters;i++){
+          const u = useLHS? U[i][j] : rng();
+          // map each dist from u by inverse/approx (use u inside samplers where needed)
+          // for consistency with samplers above, we just call sampleDist using rng seeded flow:
+          // emulate u by overriding rng() temporarily:
+          const _rng = ()=>u;
+          samples[r.name][i] = sampleDist(r.dist, r.min, r.max, _rng);
+        }
+      }
 
-  
-</script>
+      // evaluate expression
+      const y = new Float64Array(iters);
+      for(let i=0;i<iters;i++){
+        const ctx = Object.fromEntries(names.map(nm=>[nm, samples[nm][i]]));
+        try{
+          y[i] = evalExpr(expr, ctx);
+          if(!Number.isFinite(y[i])) y[i]=NaN;
+        }catch(err){
+          console.error(err); y[i]=NaN;
+        }
+      }
+      const clean = Array.from(y).filter(x=>Number.isFinite(x)).sort((a,b)=>a-b);
+      if(clean.length===0){ alert("Expression returned no finite results. Check variables and expression."); return; }
+
+      const mean = clean.reduce((a,b)=>a+b,0)/clean.length;
+      const p = q => clean[Math.min(clean.length-1, Math.max(0, Math.floor(q*(clean.length-1))))];
+      const p10=p(0.10), p50=p(0.50), p90=p(0.90);
+      setMetric("mMean", mean); setMetric("mStd", stdev(clean, mean)); setMetric("mP10", p10); setMetric("mP50", p50); setMetric("mP90", p90);
+
+      // charts
+      Plotly.newPlot("hist", [{x:clean, type:"histogram"}],
+        {margin:{t:10,r:10,l:40,b:40}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#e7eef7'}},
+        {displayModeBar:false});
+      const yy = clean.map((v,i)=> i/(clean.length-1));
+      Plotly.newPlot("cdf", [{x:clean, y:yy, mode:'lines'}],
+        {margin:{t:10,r:10,l:40,b:40}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#e7eef7'}},
+        {displayModeBar:false});
+
+      // tornado (Pearson)
+      const meanY=mean, varY = clean.reduce((s,v)=>s+(v-meanY)*(v-meanY),0);
+      const cors = names.map(nm=>{
+        const xi = samples[nm];
+        const xm = xi.reduce((a,b)=>a+b,0)/iters;
+        let num=0, denx=0;
+        for(let i=0;i<iters;i++){
+          const yy = y[i]; if(!Number.isFinite(yy)) continue;
+          num += (xi[i]-xm)*(yy-meanY);
+          denx += (xi[i]-xm)*(xi[i]-xm);
+        }
+        const r = (denx>0 && varY>0)? num/Math.sqrt(denx*varY) : 0;
+        return {name:nm, r};
+      }).sort((a,b)=>Math.abs(a.r)-Math.abs(b.r));
+      Plotly.newPlot("tornado",
+        [{x:cors.map(c=>c.r), y:cors.map(c=>c.name), type:"bar", orientation:"h"}],
+        {margin:{t:10,r:10,l:100,b:40}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#e7eef7'}},
+        {displayModeBar:false});
+
+      lastData = {names, samples, y: clean, stats:{mean, p10, p50, p90}};
+    }
+
+    function stdev(arr, mean){
+      let s=0; for(const v of arr) s+=(v-mean)*(v-mean);
+      return Math.sqrt(s/Math.max(arr.length-1,1));
+    }
+    function setMetric(id,v){ document.getElementById(id).textContent = Number.isFinite(v)? v.toFixed(5) : "–"; }
+
+    // buttons
+    document.getElementById('runBtn').onclick = run;
+    document.getElementById('clearBtn').onclick = ()=>{
+      ["mMean","mStd","mP10","mP50","mP90"].forEach(id=> document.getElementById(id).textContent="–");
+      ["hist","cdf","tornado"].forEach(id=> document.getElementById(id).innerHTML="");
+      lastData=null;
+    };
+
+    // downloads
+    document.getElementById('dlData').onclick = ()=>{
+      if(!lastData){ alert("Run the simulation first."); return; }
+      const {names, samples, y} = lastData;
+      const headers = names.concat(["OUTPUT"]);
+      const rows = [];
+      for(let i=0;i<y.length;i++){
+        const r = names.map(nm=> samples[nm][i]);
+        r.push(y[i]);
+        rows.push(r);
+      }
+      const csv = [headers.join(","), ...rows.map(r=> r.join(","))].join("\n");
+      download("mc_results.csv", csv);
+    };
+    document.getElementById('dlSummary').onclick = ()=>{
+      if(!lastData){ alert("Run the simulation first."); return; }
+      const {stats:{mean,p10,p50,p90}} = lastData;
+      const csv = "metric,value\n" +
+        `mean,${mean}\nstd,\n` + // std from chart not stored here; optional to add
+        `p10,${p10}\np50,${p50}\np90,${p90}\n`;
+      download("mc_summary.csv", csv);
+    };
+    function download(name, text){
+      const blob = new Blob([text], {type:"text/csv;charset=utf-8;"}); 
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href=url; a.download=name; a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
 </body>
 </html>
