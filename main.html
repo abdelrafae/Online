@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reservoir QuickCalc – Monte Carlo</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin:20px; }
+    .var { border:1px solid #ccc; padding:10px; margin-bottom:10px; border-radius:8px; }
+    label { display:block; margin-top:6px; }
+    input, select, button { padding:6px; margin-top:4px; }
+    .results { margin-top:20px; }
+  </style>
+</head>
+<body>
+  <h1>Reservoir QuickCalc – Monte Carlo</h1>
+
+  <div>
+    <label>Iterations <input id="iters" type="number" value="50000"></label>
+    <label>Equation Preset
+      <select id="preset">
+        <option value="">Custom (use expression box)</option>
+        <option value="Arps Cumulative">Arps Cumulative</option>
+      </select>
+    </label>
+    <label>Custom Expression <input id="expr" size="70" value="X1+X2"></label>
+  </div>
+
+  <h2>Variables</h2>
+  <div id="vars"></div>
+  <button onclick="addVar()">Add Variable</button><br><br>
+  <button onclick="runSim()">Run Simulation</button>
+
+  <div class="results">
+    <h2>Results</h2>
+    <div id="summary"></div>
+    <div id="hist"></div>
+    <div id="cdf"></div>
+    <div id="tornado"></div>
+  </div>
+
+<script>
+/* ========= Presets ========= */
+const PRESETS = {
+  "Arps Cumulative": (ctx) => {
+    const {Qi, Di, b, qe} = ctx;
+    if (qe >= Qi) return 0;
+    if (Math.abs(b) < 1e-8) {
+      return (Qi - qe) / Di; // Exponential
+    } else if (Math.abs(b - 1) < 1e-8) {
+      return (Qi / Di) * Math.log(Qi / qe); // Harmonic
+    } else {
+      return Qi / ((1 - b) * Di) * (1 - Math.pow(qe / Qi, (1 - b) / b)); // Hyperbolic
+    }
+  }
+};
+
+const PRESET_EXPRESSIONS = {
+  "Arps Cumulative": "case(b=0)→(Qi - qe)/Di ; case(b=1)→(Qi/Di)*ln(Qi/qe) ; else→Qi/((1-b)*Di)*(1-(qe/Qi)^((1-b)/b))"
+};
+
+/* ========= Variable UI ========= */
+let varCount=0;
+function addVar(name="X"+(varCount+1)){
+  varCount++;
+  const div=document.createElement("div");
+  div.className="var";
+  div.innerHTML=`
+    <label>Name <input class="name" value="${name}"></label>
+    <label>Distribution 
+      <select class="dist">
+        <option>uniform</option>
+        <option>triangular</option>
+        <option>normal</option>
+        <option>lognormal</option>
+        <option>PERT</option>
+        <option>fixed</option>
+      </select>
+    </label>
+    <label>Min <input type="number" step="0.00001" class="min" value="0"></label>
+    <label>Max <input type="number" step="0.00001" class="max" value="1"></label>
+  `;
+  document.getElementById("vars").appendChild(div);
+}
+// defaults for Arps
+addVar("Qi");
+addVar("Di");
+addVar("b");
+addVar("qe");
+
+/* ========= Distribution Samplers ========= */
+function randn(){ let u=Math.random(), v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function sample(dist,xmin,xmax){
+  if(dist=="fixed") return (xmin+xmax)/2;
+  if(dist=="uniform") return xmin+(xmax-xmin)*Math.random();
+  if(dist=="triangular"){
+    let u=Math.random(), c=(xmin+xmax)/2, Fc=(c-xmin)/(xmax-xmin);
+    return u<Fc ? xmin+Math.sqrt(u*(xmax-xmin)*(c-xmin))
+                : xmax-Math.sqrt((1-u)*(xmax-xmin)*(xmax-c));
+  }
+  if(dist=="normal"){ let mean=(xmin+xmax)/2, std=(xmax-xmin)/3.3; return mean+std*randn(); }
+  if(dist=="lognormal"){ let mu=Math.log((xmin+xmax)/2), sigma=(Math.log(xmax)-Math.log(xmin))/3.3;
+    return Math.exp(mu+sigma*randn()); }
+  if(dist=="PERT"){ let a=xmin,b=xmax; return a+(b-a)*Math.random(); }
+}
+
+/* ========= Simulation ========= */
+function runSim(){
+  const iters=parseInt(document.getElementById("iters").value);
+  const expr=document.getElementById("expr").value;
+  const preset=document.getElementById("preset").value;
+
+  const cards=document.querySelectorAll(".var");
+  let names=[], specs=[];
+  cards.forEach(c=>{
+    names.push(c.querySelector(".name").value);
+    specs.push({
+      dist:c.querySelector(".dist").value,
+      min:parseFloat(c.querySelector(".min").value),
+      max:parseFloat(c.querySelector(".max").value)
+    });
+  });
+
+  let data=[], samples={}; names.forEach(n=>samples[n]=[]);
+  for(let i=0;i<iters;i++){
+    let ctx={};
+    names.forEach((n,j)=>{
+      let v=sample(specs[j].dist,specs[j].min,specs[j].max);
+      ctx[n]=v; samples[n].push(v);
+    });
+    let val;
+    if(preset && PRESETS[preset]){
+      val=PRESETS[preset](ctx);
+    } else {
+      try{ val=eval(expr.replace(/\b([A-Za-z]\w*)\b/g,(m)=>ctx[m]??m)); }
+      catch(e){ console.error("Eval error",e); val=NaN; }
+    }
+    data.push(val);
+  }
+
+  data=data.filter(x=>!isNaN(x)).sort((a,b)=>a-b);
+  const mean=data.reduce((a,b)=>a+b,0)/data.length;
+  const p10=data[Math.floor(0.1*data.length)], 
+        p50=data[Math.floor(0.5*data.length)], 
+        p90=data[Math.floor(0.9*data.length)];
+
+  document.getElementById("summary").innerHTML=
+    `Mean=${mean.toFixed(2)} P10=${p10.toFixed(2)} P50=${p50.toFixed(2)} P90=${p90.toFixed(2)}`;
+
+  Plotly.newPlot("hist",[ {x:data,type:"histogram"} ]);
+  Plotly.newPlot("cdf",[ {x:data,y:data.map((d,i)=>i/data.length),mode:"lines"} ]);
+
+  let cors=names.map(n=>{
+    let xi=samples[n], xm=xi.reduce((a,b)=>a+b,0)/iters;
+    let num=0, denx=0, deny=0;
+    data.forEach((y,i)=>{ num+=(xi[i]-xm)*(y-mean); denx+=(xi[i]-xm)**2; deny+=(y-mean)**2; });
+    let r=num/Math.sqrt(denx*deny);
+    return {name:n, r:r};
+  }).sort((a,b)=>Math.abs(a.r)-Math.abs(b.r));
+  Plotly.newPlot("tornado",[ {x:cors.map(c=>c.r),y:cors.map(c=>c.name),type:"bar",orientation:"h"} ]);
+}
+
+/* ========= Preset → Expression Sync ========= */
+document.getElementById("preset").addEventListener("change", (e)=>{
+  const val=e.target.value;
+  if(val && PRESET_EXPRESSIONS[val]){
+    document.getElementById("expr").value=PRESET_EXPRESSIONS[val];
+  }
+});
+</script>
+</body>
+</html>
